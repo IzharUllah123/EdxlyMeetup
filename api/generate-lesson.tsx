@@ -1,69 +1,52 @@
-import { GoogleGenAI } from "@google/genai";
-import type { AILesson } from "../src/data/curriculum";
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-export default async function handler(req: any, res: any) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+// ❗ Do NOT use dotenv in Vercel. Environment variables come from Vercel dashboard.
+const apiKey = process.env.GEMINI_API_KEY;
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  if (!apiKey) {
+    console.error("❌ GEMINI_API_KEY missing!");
+    return res.status(500).json({ error: "Server error: Missing API key" });
   }
 
   try {
-    const { skillTitle, gradeTitle } = req.body;
+    // Vercel automatically parses JSON → no need for body parser
+    const { skillTitle, gradeTitle } = req.body as {
+      skillTitle?: string;
+      gradeTitle?: string;
+    };
 
     if (!skillTitle || !gradeTitle) {
-      return res.status(400).json({ error: 'Missing skillTitle or gradeTitle' });
+      return res.status(400).json({
+        error: "skillTitle and gradeTitle are required",
+      });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      console.error('GEMINI_API_KEY not found');
-      return res.status(500).json({ error: 'AI service unavailable' });
-    }
+    const genAI = new GoogleGenerativeAI(apiKey);
 
-    const ai = new GoogleGenAI({ apiKey });
+    const prompt = `
+      Create a JSON lesson for skill: "${skillTitle}"
+      Grade: "${gradeTitle}"
+      Format: { explanation, question, options: [A,B,C,D], correctAnswer }
+    `;
 
-    const prompt = `Generate a lesson for ${gradeTitle} students, specifically for the skill: "${skillTitle}".
-
-Please respond with a JSON object exactly in this format:
-{
-  "explanation": "A short explanation of the concept in simple terms that ${gradeTitle} students can understand",
-  "question": "A practice question related to the skill",
-  "options": ["A. option one", "B. option two", "C. option three", "D. option four"],
-  "correctAnswer": "A"
-}
-
-Make sure the options are prefixed with A., B., C., D. and one of them is correct. The correctAnswer should be just the letter (A, B, C, or D). Keep everything appropriate for ${gradeTitle} level.`;
-
-    const response = await ai.models.generateContent({
+    const model = genAI.getGenerativeModel({
       model: "gemini-1.5-flash",
-      contents: prompt,
+      generationConfig: { responseMimeType: "application/json" }
     });
 
-    let generatedText = response.text;
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
 
-    if (!generatedText) {
-      throw new Error('No response from AI');
-    }
+    return res.status(200).json(JSON.parse(text));
 
-    // Clean the response
-    generatedText = generatedText.replace(/```json\s*/, '').replace(/\s*```\s*$/, '').trim();
-
-    let lesson: AILesson;
-    try {
-      lesson = JSON.parse(generatedText);
-    } catch (parseError) {
-      console.error('Failed to parse AI response:', generatedText);
-      throw new Error('Invalid response format from AI');
-    }
-
-    // Validate the lesson structure
-    if (!lesson.explanation || !lesson.question || !Array.isArray(lesson.options) || lesson.options.length !== 4 || !lesson.correctAnswer) {
-      throw new Error('Incomplete lesson data from AI');
-    }
-
-    res.status(200).json(lesson);
-
-  } catch (error) {
-    console.error('AI Lesson generation error:', error);
-    res.status(500).json({ error: 'Failed to generate lesson' });
+  } catch (err) {
+    console.error("❌ API Error:", err);
+    return res.status(500).json({ error: "Failed to generate lesson" });
   }
 }
