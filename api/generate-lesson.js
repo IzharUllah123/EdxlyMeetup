@@ -16,14 +16,10 @@ export default async function handler(req, res) {
   }
 
   console.log('🔑 API Key exists:', !!apiKey);
-  console.log('📦 Request body:', req.body);
 
   if (!apiKey) {
-    console.error('❌ GEMINI_API_KEY missing in environment variables');
-    return res.status(500).json({ 
-      error: 'Server configuration error',
-      details: 'API key not configured'
-    });
+    console.error('❌ GEMINI_API_KEY missing');
+    return res.status(500).json({ error: 'Server configuration error' });
   }
 
   try {
@@ -39,12 +35,10 @@ export default async function handler(req, res) {
     console.log('📚 Generating lesson for:', skillTitle, gradeTitle);
 
     const genAI = new GoogleGenerativeAI(apiKey);
+    
+    // Using gemini-pro model
     const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
-      generationConfig: { 
-        responseMimeType: 'application/json',
-        temperature: 0.7
-      }
+      model: 'gemini-pro'
     });
 
     const prompt = `
@@ -53,7 +47,7 @@ Create an educational lesson in JSON format.
 Skill: "${skillTitle}"
 Grade: "${gradeTitle}"
 
-Return ONLY a valid JSON object with this structure:
+Return ONLY a valid JSON object with this exact structure (no other text):
 {
   "explanation": "A clear, detailed explanation of the concept suitable for ${gradeTitle}",
   "question": "A practice question to test understanding",
@@ -66,34 +60,36 @@ Return ONLY a valid JSON object with this structure:
   "correctAnswer": "A"
 }
 
-Make it engaging and age-appropriate. Return only the JSON, no markdown.
+Make it engaging and age-appropriate. Return ONLY the JSON object, no markdown formatting or code blocks.
     `.trim();
 
-    console.log('🤖 Calling Gemini API...');
+    console.log('🤖 Calling Gemini API with gemini-pro...');
     const result = await model.generateContent(prompt);
     const text = result.response.text();
     
-    console.log('📝 Raw response length:', text.length);
-    console.log('📝 First 200 chars:', text.substring(0, 200));
+    console.log('📝 Raw response:', text.substring(0, 200));
 
     // Clean up potential markdown formatting
-    const cleanText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    let cleanText = text.trim();
+    cleanText = cleanText.replace(/```json\n?/g, '');
+    cleanText = cleanText.replace(/```\n?/g, '');
+    cleanText = cleanText.trim();
     
     const jsonResponse = JSON.parse(cleanText);
     
-    console.log('✅ Successfully parsed JSON');
+    console.log('✅ Successfully generated lesson');
     return res.status(200).json(jsonResponse);
 
   } catch (err) {
-    console.error('❌ Full error:', err);
-    console.error('Error name:', err.name);
-    console.error('Error message:', err.message);
-    console.error('Error stack:', err.stack);
+    console.error('❌ Error details:', {
+      name: err.name,
+      message: err.message,
+      status: err.status
+    });
     
     return res.status(500).json({ 
       error: 'Failed to generate lesson',
-      details: err.message,
-      type: err.name
+      details: err.message
     });
   }
 }
