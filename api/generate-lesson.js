@@ -36,10 +36,12 @@ export default async function handler(req, res) {
 
     const genAI = new GoogleGenerativeAI(apiKey);
     
-    // Using gemini-pro model
+    // Using gemini-2.5-flash model
     const model = genAI.getGenerativeModel({
-      model: 'gemini-pro'
+      model: 'gemini-2.5-flash'
     });
+
+
 
     const prompt = `
 Create an educational lesson in JSON format.
@@ -63,7 +65,7 @@ Return ONLY a valid JSON object with this exact structure (no other text):
 Make it engaging and age-appropriate. Return ONLY the JSON object, no markdown formatting or code blocks.
     `.trim();
 
-    console.log('🤖 Calling Gemini API with gemini-pro...');
+    console.log('🤖 Calling Gemini API with gemini-2.5-flash...');
     const result = await model.generateContent(prompt);
     const text = result.response.text();
     
@@ -92,4 +94,4 @@ Make it engaging and age-appropriate. Return ONLY the JSON object, no markdown f
       details: err.message
     });
   }
-}
+}s
