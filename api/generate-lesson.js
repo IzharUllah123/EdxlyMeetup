@@ -43,26 +43,23 @@ export default async function handler(req, res) {
 
 
 
-    const prompt = `
-Create an educational lesson in JSON format.
+   const prompt = `
+      Create a Quiz Lesson in JSON format.
 
-Skill: "${skillTitle}"
-Grade: "${gradeTitle}"
+      Skill: "${skillTitle}"
+      Grade: "${gradeTitle}"
 
-Return ONLY a valid JSON object with this exact structure (no other text):
-{
-  "explanation": "A clear, detailed explanation of the concept suitable for ${gradeTitle}",
-  "question": "A practice question to test understanding",
-  "options": [
-    "A) First option",
-    "B) Second option", 
-    "C) Third option",
-    "D) Fourth option"
-  ],
-  "correctAnswer": "A"
-}
+      Generate a JSON object with:
+      1. "topicIntro": A short, encouraging introduction paragraph.
+      2. "questions": An array of exactly 20 multiple-choice questions.
 
-Make it engaging and age-appropriate. Return ONLY the JSON object, no markdown formatting or code blocks.
+      Each question must have:
+      - "question": The question text.
+      - "options": An array of 4 options (e.g. ["A) 1", "B) 2", "C) 3", "D) 4"]).
+      - "correctAnswer": The correct option letter (e.g. "B").
+      - "explanation": A brief explanation of why it is correct.
+
+      Return ONLY valid JSON. No markdown.
     `.trim();
 
     console.log('🤖 Calling Gemini API with gemini-2.5-flash...');

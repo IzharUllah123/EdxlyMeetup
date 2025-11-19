@@ -1,52 +1,50 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   ArrowLeft,
   Bot,
-  Send,
   Loader2,
   AlertTriangle,
-  User,
+  Trophy,
+  RefreshCcw,
+  Sparkles // Icon for success
 } from "lucide-react";
 import { curriculumDatabase } from "@/data/curriculum";
 import type { AILesson } from "@/data/curriculum";
 
-// Define a type for chat messages
-interface ChatMessage {
-  role: "user" | "ai";
-  text: string;
-}
+// --- IXL-Style Praise Words ---
+const PRAISE_WORDS = [
+  "Terrific!", "Superb!", "Excellent!", "Correct!", "Great Job!", 
+  "Amazing!", "Wonderful!", "Perfect!", "Brilliant!", "Outstanding!"
+];
 
 const LearningPage = () => {
   const { gradeId, subjectId, skillId } = useParams();
 
-  // Lesson State
+  // --- Data State ---
   const [lesson, setLesson] = useState<AILesson | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  // Quiz State
-  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
-  const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
 
-  // Chat State
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
-  const [chatInput, setChatInput] = useState("");
-  const [isChatLoading, setIsChatLoading] = useState(false);
+  // --- Quiz State ---
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+  const [isAnswerChecked, setIsAnswerChecked] = useState(false);
+  const [score, setScore] = useState(0);
+  const [quizCompleted, setQuizCompleted] = useState(false);
   
-  // Scroll ref for chat
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  // --- Feedback State ---
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [isCorrectState, setIsCorrectState] = useState<boolean | null>(null);
 
   const subjectData = curriculumDatabase[gradeId as string]?.[subjectId as string];
-  
   const skill = subjectData?.topics
     .flatMap((topic) => topic.skills)
     .find((s) => s.id === skillId);
 
-  // --- 1. FETCH LESSON ---
+  // --- Fetch Data ---
   useEffect(() => {
     if (!skill || !subjectData) {
       setError("Skill not found.");
@@ -67,15 +65,8 @@ const LearningPage = () => {
         });
 
         if (!response.ok) throw new Error("Failed to get a response");
-
         const data: AILesson = await response.json();
         setLesson(data);
-        
-        // Add the initial explanation to chat history
-        setChatHistory([
-          { role: "ai", text: data.explanation }
-        ]);
-        
       } catch (err) {
         setError(err instanceof Error ? err.message : "An unknown error occurred");
       } finally {
@@ -86,187 +77,251 @@ const LearningPage = () => {
     fetchLesson();
   }, [skill, subjectData]);
 
-  // Auto-scroll to bottom of chat
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatHistory]);
+  // --- Logic Functions ---
 
-  // --- 2. FIX: ROBUST ANSWER CHECKING ---
-  const handleAnswerSubmit = (option: string) => {
-    if (!lesson) return;
-    
-    // Split by ')' OR '.' to handle "A) Text" or "A. Text"
-    // Trim whitespace to be safe
-    const userSelectedLetter = option.split(/[).]/)[0].trim().toUpperCase();
-    const correctLetter = lesson.correctAnswer.trim().toUpperCase();
-
+  const handleOptionSelect = (option: string) => {
+    if (isAnswerChecked) return; // Lock input after checking
     setSelectedAnswer(option);
+  };
+
+  const handleCheckAnswer = () => {
+    if (!selectedAnswer || !lesson) return;
     
-    if (userSelectedLetter === correctLetter) {
-      setIsCorrect(true);
-      setChatHistory(prev => [...prev, { role: "ai", text: "That's correct! Great job! 🎉 Do you have any other questions?" }]);
+    const currentQ = lesson.questions[currentQuestionIndex];
+    const selectedLetter = selectedAnswer.split(/[).]/)[0].trim().toUpperCase();
+    const correctLetter = currentQ.correctAnswer.trim().toUpperCase();
+    
+    const isCorrect = selectedLetter === correctLetter;
+    setIsCorrectState(isCorrect);
+    setIsAnswerChecked(true);
+    
+    if (isCorrect) {
+      // --- CORRECT ANSWER LOGIC ---
+      setScore(prev => prev + 1);
+      
+      // 1. Pick a random praise word
+      const randomPraise = PRAISE_WORDS[Math.floor(Math.random() * PRAISE_WORDS.length)];
+      setFeedbackMessage(randomPraise);
+
+      // 2. Auto-advance after 1.5 seconds (IXL Style)
+      setTimeout(() => {
+         handleNextQuestion();
+      }, 1500); 
+
     } else {
-      setIsCorrect(false);
-      setChatHistory(prev => [...prev, { role: "ai", text: `Not quite. The correct answer was ${correctLetter}. Let me know if you need help understanding why!` }]);
+      // --- INCORRECT ANSWER LOGIC ---
+      // Show explanation and wait for user to click "Got it" or Next
+      setFeedbackMessage(`The correct answer was ${correctLetter}.`);
     }
   };
 
-  // --- 3. NEW: HANDLE CHAT SUBMIT ---
-  const handleChatSubmit = async () => {
-    if (!chatInput.trim()) return;
-
-    const userMessage = chatInput;
-    setChatInput(""); // Clear input
-    setChatHistory(prev => [...prev, { role: "user", text: userMessage }]);
-    setIsChatLoading(true);
-
-    try {
-      // You need to create this API route (see instructions below)
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: userMessage,
-          context: `Skill: ${skill?.title}. Previous Explanation: ${lesson?.explanation}`
-        }),
-      });
-
-      if (!response.ok) throw new Error("Failed to send message");
-
-      const data = await response.json();
-      setChatHistory(prev => [...prev, { role: "ai", text: data.reply }]);
-
-    } catch (err) {
-      setChatHistory(prev => [...prev, { role: "ai", text: "Sorry, I'm having trouble connecting right now." }]);
-    } finally {
-      setIsChatLoading(false);
+  const handleNextQuestion = () => {
+    if (!lesson) return;
+    
+    if (currentQuestionIndex < lesson.questions.length - 1) {
+      // Move to next
+      setCurrentQuestionIndex(prev => prev + 1);
+      // Reset states for next question
+      setSelectedAnswer(null);
+      setIsAnswerChecked(false);
+      setIsCorrectState(null);
+      setFeedbackMessage("");
+    } else {
+      // Finish Quiz
+      setQuizCompleted(true);
     }
+  };
+
+  const handleRetry = () => {
+    window.location.reload();
   };
 
   const backUrl = `/grade/${gradeId}/subject/${subjectId}`;
 
+  // --- Render ---
   return (
     <section className="py-8 bg-muted/30 min-h-screen flex flex-col">
       <div className="container mx-auto px-4 max-w-3xl flex-grow flex flex-col">
-        <div className="mb-4">
+        
+        {/* Top Bar */}
+        <div className="mb-4 flex justify-between items-center">
           <Button variant="ghost" asChild className="pl-0 hover:bg-transparent hover:text-primary">
             <Link to={backUrl}>
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Skills
             </Link>
           </Button>
+          {!isLoading && !quizCompleted && lesson && (
+             <div className="flex items-center gap-4">
+                <div className="text-sm font-bold text-primary bg-primary/10 px-3 py-1 rounded-full">
+                    Score: {Math.round((score / (currentQuestionIndex + 1)) * 100)}%
+                </div>
+                <div className="text-sm font-medium text-muted-foreground">
+                    Q: {currentQuestionIndex + 1}/{lesson.questions.length}
+                </div>
+             </div>
+          )}
         </div>
 
-        <Card className="border-primary/20 shadow-lg flex flex-col flex-grow overflow-hidden">
+        <Card className="border-primary/20 shadow-lg flex flex-col flex-grow overflow-hidden min-h-[600px]">
           <CardHeader className="bg-primary/5 border-b py-4">
             <CardTitle className="flex items-center text-primary text-lg">
               <Bot className="w-6 h-6 mr-2" />
-              AI Tutor: {skill?.title}
+              {quizCompleted ? "Quiz Results" : `Topic: ${skill?.title}`}
             </CardTitle>
           </CardHeader>
           
-          <CardContent className="p-0 flex flex-col flex-grow h-[600px]"> 
-            {/* Scrollable Area */}
-            <div className="flex-grow overflow-y-auto p-6 space-y-6">
-              
-              {isLoading && (
-                <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                  <Loader2 className="w-8 h-8 animate-spin mb-2" />
-                  <p>Preparing your lesson...</p>
-                </div>
-              )}
+          <CardContent className="p-6 flex-grow flex flex-col relative">
+            
+            {/* Loading */}
+            {isLoading && (
+              <div className="flex flex-col items-center justify-center flex-grow text-muted-foreground">
+                <Loader2 className="w-12 h-12 animate-spin mb-4 text-primary" />
+                <p className="text-lg">Building your 20-question challenge...</p>
+              </div>
+            )}
 
-              {error && (
-                <div className="flex flex-col items-center justify-center h-full text-destructive">
-                  <AlertTriangle className="w-8 h-8 mb-2" />
-                  <p>{error}</p>
-                </div>
-              )}
+            {/* Error */}
+            {error && (
+              <div className="flex flex-col items-center justify-center flex-grow text-destructive">
+                <AlertTriangle className="w-12 h-12 mb-4" />
+                <p className="text-lg font-semibold">Something went wrong</p>
+                <Button onClick={() => window.location.reload()} className="mt-4" variant="outline">
+                    Try Again
+                </Button>
+              </div>
+            )}
 
-              {lesson && !isLoading && (
-                <>
-                  {/* 1. The Lesson/Quiz Section (Always at top) */}
-                  <div className="bg-background rounded-lg border p-4 shadow-sm space-y-4">
-                     <div className="prose prose-sm max-w-none">
-                        <p className="text-lg leading-relaxed">{lesson.explanation}</p>
-                     </div>
+            {/* Quiz Interface */}
+            {lesson && !isLoading && !quizCompleted && (
+               <div className="flex flex-col h-full">
+                  
+                  {/* Question Text */}
+                  <div className="mb-6">
+                      <h3 className="text-xl font-semibold mb-4 leading-relaxed">
+                          {lesson.questions[currentQuestionIndex].question}
+                      </h3>
+                      
+                      {/* Options */}
+                      <div className="space-y-3">
+                          {lesson.questions[currentQuestionIndex].options.map((option) => {
+                              // Styling logic
+                              let btnClass = "w-full justify-start text-left py-4 text-base transition-all duration-200 ";
+                              const selectedLetter = option.split(/[).]/)[0].trim().toUpperCase();
+                              const correctLetter = lesson.questions[currentQuestionIndex].correctAnswer.trim().toUpperCase();
+                              
+                              if (isAnswerChecked) {
+                                  if (selectedLetter === correctLetter) {
+                                      // Show Green for correct
+                                      btnClass += "bg-green-100 border-green-500 text-green-900 font-medium"; 
+                                  } else if (selectedAnswer === option) {
+                                      // Show Red for wrong selection
+                                      btnClass += "bg-red-100 border-red-500 text-red-900";
+                                  } else {
+                                      btnClass += "opacity-50";
+                                  }
+                              } else {
+                                  btnClass += selectedAnswer === option 
+                                    ? "border-primary bg-primary/10 ring-2 ring-primary text-primary font-medium" 
+                                    : "hover:bg-muted border-input";
+                              }
 
-                     <div className="mt-6 p-4 bg-muted/50 rounded-md">
-                        <p className="font-semibold mb-3">Practice Question:</p>
-                        <p className="mb-4">{lesson.question}</p>
-                        <div className="grid gap-2">
-                          {lesson.options.map((option) => (
-                            <Button
-                              key={option}
-                              variant={selectedAnswer === option ? (isCorrect ? "default" : "destructive") : "outline"}
-                              className={`w-full justify-start text-left h-auto py-3 px-4 ${
-                                selectedAnswer === option && isCorrect ? "bg-green-600 hover:bg-green-700" : ""
-                              }`}
-                              onClick={() => !selectedAnswer && handleAnswerSubmit(option)}
-                              disabled={selectedAnswer !== null}
-                            >
-                              {option}
-                            </Button>
-                          ))}
-                        </div>
-                        {/* Feedback Message */}
-                         {selectedAnswer && (
-                            <div className={`mt-4 p-3 rounded-md text-sm font-medium ${isCorrect ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                              {isCorrect 
-                                ? "Correct! Good job!" 
-                                : `Not quite. The correct answer is ${lesson.correctAnswer}.`}
-                            </div>
-                         )}
-                     </div>
+                              return (
+                                <Button
+                                    key={option}
+                                    variant="outline"
+                                    className={btnClass}
+                                    onClick={() => handleOptionSelect(option)}
+                                    disabled={isAnswerChecked}
+                                >
+                                    {option}
+                                </Button>
+                              )
+                          })}
+                      </div>
                   </div>
 
-                  {/* 2. Chat History */}
-                  {chatHistory.slice(1).map((msg, index) => ( // Skip first msg as it's the explanation
-                    <div
-                      key={index}
-                      className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                    >
-                      <div
-                        className={`max-w-[80%] p-3 rounded-lg ${
-                          msg.role === "user"
-                            ? "bg-primary text-primary-foreground rounded-br-none"
-                            : "bg-muted rounded-bl-none"
-                        }`}
-                      >
-                        {msg.text}
+                  {/* FEEDBACK OVERLAY (IXL Style) */}
+                  {isAnswerChecked && (
+                      <div className={`mt-auto p-6 rounded-xl mb-4 animate-in slide-in-from-bottom-4 fade-in duration-300 border-l-4 ${isCorrectState ? "bg-green-50 border-green-500" : "bg-red-50 border-red-500"}`}>
+                          <div className="flex items-center gap-3 mb-2">
+                              {isCorrectState ? (
+                                  <Sparkles className="w-6 h-6 text-green-600 fill-green-600" />
+                              ) : (
+                                  <AlertTriangle className="w-6 h-6 text-red-600" />
+                              )}
+                              <h4 className={`text-xl font-bold ${isCorrectState ? "text-green-700" : "text-red-700"}`}>
+                                  {feedbackMessage}
+                              </h4>
+                          </div>
+                          
+                          {!isCorrectState && (
+                              <p className="text-sm text-red-800 mt-1">
+                                  {lesson.questions[currentQuestionIndex].explanation}
+                              </p>
+                          )}
                       </div>
-                    </div>
-                  ))}
-
-                  {isChatLoading && (
-                    <div className="flex justify-start">
-                       <div className="bg-muted p-3 rounded-lg rounded-bl-none">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                       </div>
-                    </div>
                   )}
-                  <div ref={chatEndRef} />
-                </>
-              )}
-            </div>
 
-            {/* Chat Input Area */}
-            <div className="p-4 border-t bg-background">
-              <form 
-                onSubmit={(e) => { e.preventDefault(); handleChatSubmit(); }}
-                className="flex gap-2"
-              >
-                <Input 
-                  placeholder="Ask a question about this topic..." 
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  disabled={isLoading || isChatLoading}
-                />
-                <Button type="submit" disabled={isLoading || isChatLoading || !chatInput.trim()}>
-                  <Send className="w-4 h-4" />
-                </Button>
-              </form>
-            </div>
+                  {/* Bottom Action Button */}
+                  <div className="mt-auto pt-4 border-t">
+                      {!isAnswerChecked ? (
+                          <Button 
+                            className="w-full py-6 text-lg font-semibold shadow-lg hover:scale-[1.01] transition-transform" 
+                            onClick={handleCheckAnswer}
+                            disabled={!selectedAnswer}
+                            size="lg"
+                          >
+                            Submit
+                          </Button>
+                      ) : (
+                           // If incorrect, show "Got it" to manually advance. If correct, it auto-advances.
+                           !isCorrectState && (
+                            <Button 
+                                className="w-full py-6 text-lg" 
+                                onClick={handleNextQuestion}
+                                variant="secondary"
+                            >
+                                Got it
+                            </Button>
+                           )
+                      )}
+                  </div>
+               </div>
+            )}
+
+            {/* 4. Results Screen */}
+            {quizCompleted && lesson && (
+                <div className="flex flex-col items-center justify-center flex-grow text-center animate-in zoom-in-95">
+                    <div className="w-32 h-32 bg-yellow-100 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                        <Trophy className="w-16 h-16 text-yellow-600" />
+                    </div>
+                    
+                    <h2 className="text-4xl font-bold mb-2 text-primary">Fantastic!</h2>
+                    <p className="text-muted-foreground mb-8 text-lg">You have mastered this skill.</p>
+
+                    <div className="w-full max-w-md bg-card border p-8 rounded-xl mb-8 shadow-sm">
+                        <div className="text-7xl font-black text-primary mb-2 tracking-tighter">
+                            {Math.round((score / lesson.questions.length) * 100)}
+                        </div>
+                        <div className="text-sm text-muted-foreground uppercase tracking-wide font-semibold">SmartScore</div>
+                        <div className="mt-4 pt-4 border-t flex justify-between text-sm">
+                            <span>Correct: <span className="font-bold text-green-600">{score}</span></span>
+                            <span>Total: <span className="font-bold">{lesson.questions.length}</span></span>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-4 w-full max-w-md">
+                        <Button variant="outline" className="flex-1 h-12" asChild>
+                            <Link to={backUrl}>Back to Skills</Link>
+                        </Button>
+                        <Button className="flex-1 h-12" onClick={handleRetry}>
+                            <RefreshCcw className="w-4 h-4 mr-2" />
+                            Practice Again
+                        </Button>
+                    </div>
+                </div>
+            )}
 
           </CardContent>
         </Card>
