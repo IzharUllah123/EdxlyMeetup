@@ -1,16 +1,9 @@
-import { useParams, Link } from "react-router-dom"; // <-- No more useState
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useParams, Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  ArrowLeft,
-  BookOpen,
-  Video,
-  Gamepad2,
-} from "lucide-react";
-import { curriculumDatabase } from "@/data/curriculum"; // <-- Import shared data
+import { ArrowLeft, BookOpen, Video, Gamepad2 } from "lucide-react";
+import { curriculumDatabase } from "@/data/curriculum";
 
-// --- THE COMPONENT (Now much simpler) ---
 const Perk = () => {
   const { gradeId, subjectId } = useParams();
 
@@ -40,69 +33,78 @@ const Perk = () => {
 
   // --- Render Page ---
   return (
-    <section className="py-16 bg-muted/30">
+    <section className="py-6 bg-white min-h-screen">
       <div className="container mx-auto px-4">
-        {/* Header Section */}
-        <div className="mb-12">
-          <Button variant="outline" asChild className="mb-6">
-            <Link to="/">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to All Grades
-            </Link>
-          </Button>
-
-          <h2 className="text-4xl md:text-5xl font-bold mb-4">
-            {subjectData.title}
-          </h2>
-
-          <div className="flex flex-wrap gap-4 items-center mb-6">
-            <Badge variant="secondary" className="text-md px-3 py-1">
-              <BookOpen className="w-4 h-4 mr-2 text-primary" />
-              {subjectData.stats.skills} skills
-            </Badge>
-            {/* ... (other badges) ... */}
+        
+        {/* --- Header Section --- */}
+        <div className="mb-6 border-b pb-6">
+          <div className="flex items-center gap-4 mb-4">
+            <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-primary">
+              <Link to="/">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back
+              </Link>
+            </Button>
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
+              {subjectData.title}
+            </h2>
           </div>
 
-          <p className="text-lg text-muted-foreground max-w-3xl">
+          <p className="text-base text-gray-600 max-w-3xl mb-4">
             {subjectData.description}
           </p>
+
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="secondary" className="px-2 py-0.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 text-xs">
+              <BookOpen className="w-3 h-3 mr-1.5" />
+              {subjectData.stats.skills} skills
+            </Badge>
+            <Badge variant="secondary" className="px-2 py-0.5 bg-purple-50 text-purple-700 hover:bg-purple-100 border-purple-200 text-xs">
+              <Video className="w-3 h-3 mr-1.5" />
+              {subjectData.stats.videos} videos
+            </Badge>
+            <Badge variant="secondary" className="px-2 py-0.5 bg-green-50 text-green-700 hover:bg-green-100 border-green-200 text-xs">
+              <Gamepad2 className="w-3 h-3 mr-1.5" />
+              {subjectData.stats.games} games
+            </Badge>
+          </div>
         </div>
 
-        {/* --- CONTENT GRID (No more AI panel) --- */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {/* --- TOPICS LAYOUT (MASONRY STYLE) --- */}
+        {/* This uses 'columns' instead of 'grid' to remove vertical gaps */}
+        <div className="columns-1 md:columns-2 lg:columns-3 gap-8 space-y-8">
           
-          {/* Left: Topics List */}
           {subjectData.topics.map((topic) => (
-            <Card key={topic.id} className="flex flex-col">
-              <CardHeader>
-                <CardTitle className="text-xl">
-                  {topic.id}. {topic.title}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="flex-grow">
-                <ul className="space-y-3">
-                  {topic.skills.map((skill, index) => (
-                    <li key={skill.id}>
-                      {/* --- THIS IS NOW A LINK --- */}
-                      <Link
-                        to={`/learn/${gradeId}/${subjectId}/${skill.id}`}
-                        className={`flex items-start text-left w-full p-2 rounded-md transition-colors hover:bg-muted/50`}
-                      >
-                        <span className="text-muted-foreground mr-3 w-5 text-right">
-                          {index + 1}
-                        </span>
-                        <span className="flex-1 text-sm font-medium">
-                          {skill.title}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          ))}
+            // 'break-inside-avoid' ensures a topic isn't split between two columns
+            <div key={topic.id} className="break-inside-avoid mb-8">
+              
+              {/* Topic Title */}
+              <h3 className="text-base font-bold text-gray-900 mb-2 flex items-baseline">
+                <span className="text-lg mr-1.5 text-primary font-extrabold">{topic.id}.</span>
+                {topic.title}
+              </h3>
 
-          {/* --- AI TUTOR PANEL IS REMOVED --- */}
+              {/* Skill List */}
+              <ul className="space-y-0.5">
+                {topic.skills.map((skill, index) => (
+                  <li key={skill.id} className="group">
+                    <Link
+                      to={`/learn/${gradeId}/${subjectId}/${skill.id}`}
+                      className="flex items-start text-[13px] text-gray-600 group-hover:text-primary group-hover:underline transition-colors py-0.5"
+                    >
+                      <span className="mr-2 text-gray-400 font-medium text-[11px] pt-0.5 min-w-[1rem]">
+                        {index + 1}
+                      </span>
+                      <span className="leading-snug">
+                        {skill.title}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              
+            </div>
+          ))}
 
         </div>
       </div>

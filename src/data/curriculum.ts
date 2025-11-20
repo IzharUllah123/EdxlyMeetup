@@ -33,7 +33,7 @@ export interface AILesson {
 }
 
 // --- 2. THE MERGED DATABASE ---
-// We combine the Lower Grades and Upper Grades into one object
+// This combines your Lower Grade file and Upper Grade file into one
 export const curriculumDatabase: Record<string, Record<string, SubjectData>> = {
   ...lowerGradeData,
   ...upperGradeData,
