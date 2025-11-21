@@ -10,17 +10,38 @@ import {
   Trophy,
   RefreshCcw,
   Sparkles,
-  BookOpen,    // <-- Added for Topic Box
-  Volume2,     // <-- Added for Speaker
-  StopCircle   // <-- Added for Stop Speaker
+  BookOpen,
+  Volume2,
+  StopCircle
 } from "lucide-react";
 import { curriculumDatabase } from "@/data/curriculum";
 import type { AILesson } from "@/data/curriculum";
 
-// --- IXL-Style Praise Words ---
+// --- CONSTANTS ---
+
 const PRAISE_WORDS = [
   "Terrific!", "Superb!", "Excellent!", "Correct!", "Great Job!", 
   "Amazing!", "Wonderful!", "Perfect!", "Brilliant!", "Outstanding!"
+];
+
+const LOADING_MESSAGES = [
+  "Sharpening virtual pencils...",
+  "Summoning the math wizards...",
+  "Calculating the fun...",
+  "Building your custom challenge...",
+  "Double-checking the answers...",
+  "Almost ready to learn!"
+];
+
+const FUN_FACTS = [
+  "Did you know? Zero is the only number that can't be represented by Roman numerals.",
+  "Did you know? A 'jiffy' is an actual unit of time: 1/100th of a second.",
+  "Did you know? The number 4 is the only number with the same amount of letters as its value.",
+  "Did you know? Oranges were originally green.",
+  "Did you know? Honey never spoils. You can eat 3000-year-old honey!",
+  "Did you know? Octopuses have three hearts.",
+  "Did you know? 40 is the only number that is spelled with letters arranged in alphabetical order.",
+  "Did you know? 'Forty' is the only number that is spelled in alphabetical order."
 ];
 
 const LearningPage = () => {
@@ -30,6 +51,7 @@ const LearningPage = () => {
   const [lesson, setLesson] = useState<AILesson | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadingStep, setLoadingStep] = useState(0); // For loading animation
 
   // --- Quiz State ---
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -41,7 +63,7 @@ const LearningPage = () => {
   // --- Feedback & Speech State ---
   const [feedbackMessage, setFeedbackMessage] = useState("");
   const [isCorrectState, setIsCorrectState] = useState<boolean | null>(null);
-  const [isSpeaking, setIsSpeaking] = useState(false); // <-- Added for Speaker
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const subjectData = curriculumDatabase[gradeId as string]?.[subjectId as string];
   const skill = subjectData?.topics
@@ -59,7 +81,7 @@ const LearningPage = () => {
     const fetchLesson = async () => {
       setIsLoading(true);
       try {
-        // KEEP THIS RELATIVE! Do not change to https://...
+        // Relative path works for both Localhost (with vercel dev) and Production
         const response = await fetch("/api/generate-lesson", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -82,7 +104,16 @@ const LearningPage = () => {
     fetchLesson();
   }, [skill, subjectData]);
 
-  // --- NEW: Speech Functionality ---
+  // --- Loading Animation Timer ---
+  useEffect(() => {
+    if (!isLoading) return;
+    const interval = setInterval(() => {
+      setLoadingStep((prev) => prev + 1);
+    }, 2500); // Change message every 2.5 seconds
+    return () => clearInterval(interval);
+  }, [isLoading]);
+
+  // --- Speech Function ---
   const handleSpeak = () => {
     if (!lesson) return;
 
@@ -96,7 +127,6 @@ const LearningPage = () => {
     const currentQ = lesson.questions[currentQuestionIndex];
     let textToRead = "";
     
-    // Read intro only on first question
     if (currentQuestionIndex === 0) {
        textToRead += `Topic Overview: ${lesson.topicIntro}. `;
     }
@@ -104,17 +134,15 @@ const LearningPage = () => {
     textToRead += `Question: ${currentQ.question}. `;
     textToRead += "Options: ";
     currentQ.options.forEach((opt) => {
-       textToRead += `${opt}. `; // Reads "A) 5. B) 6."
+       textToRead += `${opt}. `;
     });
 
     const utterance = new SpeechSynthesisUtterance(textToRead);
     utterance.rate = 0.9; 
     utterance.onend = () => setIsSpeaking(false);
-    
     window.speechSynthesis.speak(utterance);
   };
 
-  // Stop speech when leaving page
   useEffect(() => {
     return () => {
       window.speechSynthesis.cancel();
@@ -124,14 +152,13 @@ const LearningPage = () => {
   // --- Logic Functions ---
 
   const handleOptionSelect = (option: string) => {
-    if (isAnswerChecked) return; 
+    if (isAnswerChecked) return;
     setSelectedAnswer(option);
   };
 
   const handleCheckAnswer = () => {
     if (!selectedAnswer || !lesson) return;
     
-    // Stop speaking when user answers
     window.speechSynthesis.cancel();
     setIsSpeaking(false);
 
@@ -148,17 +175,14 @@ const LearningPage = () => {
       const randomPraise = PRAISE_WORDS[Math.floor(Math.random() * PRAISE_WORDS.length)];
       setFeedbackMessage(randomPraise);
 
-      // Optional: Speak praise
       const praiseUtterance = new SpeechSynthesisUtterance(randomPraise);
       window.speechSynthesis.speak(praiseUtterance);
 
       setTimeout(() => {
          handleNextQuestion();
       }, 1500); 
-
     } else {
       setFeedbackMessage(`The correct answer was ${correctLetter}.`);
-      // Optional: Speak correction
       const correctionUtterance = new SpeechSynthesisUtterance(`Not quite. The correct answer was ${correctLetter}.`);
       window.speechSynthesis.speak(correctionUtterance);
     }
@@ -184,7 +208,6 @@ const LearningPage = () => {
 
   const backUrl = `/grade/${gradeId}/subject/${subjectId}`;
 
-  // --- Render ---
   return (
     <section className="py-8 bg-muted/30 min-h-screen flex flex-col">
       <div className="container mx-auto px-4 max-w-3xl flex-grow flex flex-col">
@@ -216,7 +239,6 @@ const LearningPage = () => {
               {quizCompleted ? "Quiz Results" : `Topic: ${skill?.title}`}
             </CardTitle>
 
-            {/* --- NEW: SPEAKER BUTTON --- */}
             {!isLoading && !quizCompleted && (
               <Button 
                 variant="ghost" 
@@ -232,15 +254,46 @@ const LearningPage = () => {
           
           <CardContent className="p-6 flex-grow flex flex-col relative">
             
-            {/* Loading */}
+            {/* 1. Enhanced Loading State */}
             {isLoading && (
-              <div className="flex flex-col items-center justify-center flex-grow text-muted-foreground">
-                <Loader2 className="w-12 h-12 animate-spin mb-4 text-primary" />
-                <p className="text-lg">Building your 20-question challenge...</p>
+              <div className="flex flex-col items-center justify-center flex-grow h-full text-center p-8 animate-in fade-in duration-500">
+                
+                {/* Bouncing Icon */}
+                <div className="relative mb-8">
+                  <div className="absolute inset-0 bg-primary/20 rounded-full animate-ping" />
+                  <div className="relative bg-white p-4 rounded-full shadow-xl border-2 border-primary/10">
+                    <Bot className="w-12 h-12 text-primary animate-bounce" />
+                  </div>
+                </div>
+
+                {/* Rotating Status Message */}
+                <h3 className="text-2xl font-bold text-primary mb-2 transition-all duration-500">
+                  {LOADING_MESSAGES[loadingStep % LOADING_MESSAGES.length]}
+                </h3>
+
+                {/* Progress Bar Visual */}
+                <div className="w-64 h-2 bg-gray-100 rounded-full mt-4 mb-8 overflow-hidden">
+                  <div className="h-full bg-primary animate-progress-infinite rounded-full" 
+                       style={{ width: '100%', animation: 'progress 2s infinite ease-in-out' }} 
+                  />
+                </div>
+
+                {/* Fun Fact Card */}
+                <div className="bg-blue-50 border border-blue-100 p-6 rounded-xl max-w-md shadow-sm transform transition-all duration-500">
+                  <div className="flex items-center justify-center gap-2 mb-2 text-blue-600">
+                    <Sparkles className="w-4 h-4" />
+                    <span className="text-xs font-bold uppercase tracking-wider">While you wait</span>
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <p className="text-blue-900 font-medium italic text-lg">
+                    "{FUN_FACTS[loadingStep % FUN_FACTS.length]}"
+                  </p>
+                </div>
+
               </div>
             )}
 
-            {/* Error */}
+            {/* 2. Error State */}
             {error && (
               <div className="flex flex-col items-center justify-center flex-grow text-destructive">
                 <AlertTriangle className="w-12 h-12 mb-4" />
@@ -252,12 +305,11 @@ const LearningPage = () => {
               </div>
             )}
 
-            {/* Quiz Interface */}
+            {/* 3. Quiz Interface */}
             {lesson && !isLoading && !quizCompleted && (
                <div className="flex flex-col h-full">
                   
-                  {/* --- NEW: TOPIC EXPLANATION BOX --- */}
-                  {/* Only show on first question OR always show? Currently set to always show for context */}
+                  {/* Topic Explanation Box */}
                   <div className="bg-blue-50 p-5 rounded-xl text-blue-900 mb-8 border border-blue-100 shadow-sm">
                     <div className="flex items-center gap-2 mb-2">
                         <BookOpen className="w-5 h-5 text-blue-600" />
@@ -310,7 +362,7 @@ const LearningPage = () => {
                       </div>
                   </div>
 
-                  {/* FEEDBACK OVERLAY */}
+                  {/* Feedback Overlay */}
                   {isAnswerChecked && (
                       <div className={`mt-auto p-6 rounded-xl mb-4 animate-in slide-in-from-bottom-4 fade-in duration-300 border-l-4 ${isCorrectState ? "bg-green-50 border-green-500" : "bg-red-50 border-red-500"}`}>
                           <div className="flex items-center gap-3 mb-2">
@@ -323,7 +375,6 @@ const LearningPage = () => {
                                   {feedbackMessage}
                               </h4>
                           </div>
-                          
                           {!isCorrectState && (
                               <p className="text-sm text-red-800 mt-1">
                                   {lesson.questions[currentQuestionIndex].explanation}
@@ -358,7 +409,7 @@ const LearningPage = () => {
                </div>
             )}
 
-            {/* Results Screen */}
+            {/* 4. Results Screen */}
             {quizCompleted && lesson && (
                 <div className="flex flex-col items-center justify-center flex-grow text-center animate-in zoom-in-95">
                     <div className="w-32 h-32 bg-yellow-100 rounded-full flex items-center justify-center mb-6 shadow-inner">
