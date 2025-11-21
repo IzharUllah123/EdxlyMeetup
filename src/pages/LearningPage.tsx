@@ -9,7 +9,10 @@ import {
   AlertTriangle,
   Trophy,
   RefreshCcw,
-  Sparkles // Icon for success
+  Sparkles,
+  BookOpen,    // <-- Added for Topic Box
+  Volume2,     // <-- Added for Speaker
+  StopCircle   // <-- Added for Stop Speaker
 } from "lucide-react";
 import { curriculumDatabase } from "@/data/curriculum";
 import type { AILesson } from "@/data/curriculum";
@@ -35,9 +38,10 @@ const LearningPage = () => {
   const [score, setScore] = useState(0);
   const [quizCompleted, setQuizCompleted] = useState(false);
   
-  // --- Feedback State ---
+  // --- Feedback & Speech State ---
   const [feedbackMessage, setFeedbackMessage] = useState("");
   const [isCorrectState, setIsCorrectState] = useState<boolean | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false); // <-- Added for Speaker
 
   const subjectData = curriculumDatabase[gradeId as string]?.[subjectId as string];
   const skill = subjectData?.topics
@@ -55,6 +59,7 @@ const LearningPage = () => {
     const fetchLesson = async () => {
       setIsLoading(true);
       try {
+        // KEEP THIS RELATIVE! Do not change to https://...
         const response = await fetch("/api/generate-lesson", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -77,16 +82,59 @@ const LearningPage = () => {
     fetchLesson();
   }, [skill, subjectData]);
 
+  // --- NEW: Speech Functionality ---
+  const handleSpeak = () => {
+    if (!lesson) return;
+
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+
+    setIsSpeaking(true);
+    const currentQ = lesson.questions[currentQuestionIndex];
+    let textToRead = "";
+    
+    // Read intro only on first question
+    if (currentQuestionIndex === 0) {
+       textToRead += `Topic Overview: ${lesson.topicIntro}. `;
+    }
+
+    textToRead += `Question: ${currentQ.question}. `;
+    textToRead += "Options: ";
+    currentQ.options.forEach((opt) => {
+       textToRead += `${opt}. `; // Reads "A) 5. B) 6."
+    });
+
+    const utterance = new SpeechSynthesisUtterance(textToRead);
+    utterance.rate = 0.9; 
+    utterance.onend = () => setIsSpeaking(false);
+    
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Stop speech when leaving page
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, []);
+
   // --- Logic Functions ---
 
   const handleOptionSelect = (option: string) => {
-    if (isAnswerChecked) return; // Lock input after checking
+    if (isAnswerChecked) return; 
     setSelectedAnswer(option);
   };
 
   const handleCheckAnswer = () => {
     if (!selectedAnswer || !lesson) return;
     
+    // Stop speaking when user answers
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+
     const currentQ = lesson.questions[currentQuestionIndex];
     const selectedLetter = selectedAnswer.split(/[).]/)[0].trim().toUpperCase();
     const correctLetter = currentQ.correctAnswer.trim().toUpperCase();
@@ -96,22 +144,23 @@ const LearningPage = () => {
     setIsAnswerChecked(true);
     
     if (isCorrect) {
-      // --- CORRECT ANSWER LOGIC ---
       setScore(prev => prev + 1);
-      
-      // 1. Pick a random praise word
       const randomPraise = PRAISE_WORDS[Math.floor(Math.random() * PRAISE_WORDS.length)];
       setFeedbackMessage(randomPraise);
 
-      // 2. Auto-advance after 1.5 seconds (IXL Style)
+      // Optional: Speak praise
+      const praiseUtterance = new SpeechSynthesisUtterance(randomPraise);
+      window.speechSynthesis.speak(praiseUtterance);
+
       setTimeout(() => {
          handleNextQuestion();
       }, 1500); 
 
     } else {
-      // --- INCORRECT ANSWER LOGIC ---
-      // Show explanation and wait for user to click "Got it" or Next
       setFeedbackMessage(`The correct answer was ${correctLetter}.`);
+      // Optional: Speak correction
+      const correctionUtterance = new SpeechSynthesisUtterance(`Not quite. The correct answer was ${correctLetter}.`);
+      window.speechSynthesis.speak(correctionUtterance);
     }
   };
 
@@ -119,15 +168,12 @@ const LearningPage = () => {
     if (!lesson) return;
     
     if (currentQuestionIndex < lesson.questions.length - 1) {
-      // Move to next
       setCurrentQuestionIndex(prev => prev + 1);
-      // Reset states for next question
       setSelectedAnswer(null);
       setIsAnswerChecked(false);
       setIsCorrectState(null);
       setFeedbackMessage("");
     } else {
-      // Finish Quiz
       setQuizCompleted(true);
     }
   };
@@ -164,11 +210,24 @@ const LearningPage = () => {
         </div>
 
         <Card className="border-primary/20 shadow-lg flex flex-col flex-grow overflow-hidden min-h-[600px]">
-          <CardHeader className="bg-primary/5 border-b py-4">
+          <CardHeader className="bg-primary/5 border-b py-4 flex flex-row items-center justify-between">
             <CardTitle className="flex items-center text-primary text-lg">
               <Bot className="w-6 h-6 mr-2" />
               {quizCompleted ? "Quiz Results" : `Topic: ${skill?.title}`}
             </CardTitle>
+
+            {/* --- NEW: SPEAKER BUTTON --- */}
+            {!isLoading && !quizCompleted && (
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={handleSpeak}
+                className={isSpeaking ? "text-red-500 animate-pulse" : "text-primary"}
+                title="Read aloud"
+              >
+                {isSpeaking ? <StopCircle className="w-6 h-6" /> : <Volume2 className="w-6 h-6" />}
+              </Button>
+            )}
           </CardHeader>
           
           <CardContent className="p-6 flex-grow flex flex-col relative">
@@ -186,7 +245,8 @@ const LearningPage = () => {
               <div className="flex flex-col items-center justify-center flex-grow text-destructive">
                 <AlertTriangle className="w-12 h-12 mb-4" />
                 <p className="text-lg font-semibold">Something went wrong</p>
-                <Button onClick={() => window.location.reload()} className="mt-4" variant="outline">
+                <p className="text-sm mb-4">{error}</p>
+                <Button onClick={() => window.location.reload()} variant="outline">
                     Try Again
                 </Button>
               </div>
@@ -196,6 +256,18 @@ const LearningPage = () => {
             {lesson && !isLoading && !quizCompleted && (
                <div className="flex flex-col h-full">
                   
+                  {/* --- NEW: TOPIC EXPLANATION BOX --- */}
+                  {/* Only show on first question OR always show? Currently set to always show for context */}
+                  <div className="bg-blue-50 p-5 rounded-xl text-blue-900 mb-8 border border-blue-100 shadow-sm">
+                    <div className="flex items-center gap-2 mb-2">
+                        <BookOpen className="w-5 h-5 text-blue-600" />
+                        <h4 className="font-bold text-sm uppercase tracking-wide text-blue-700">Concept Overview</h4>
+                    </div>
+                    <p className="text-base leading-relaxed opacity-90">
+                        {lesson.topicIntro}
+                    </p>
+                  </div>
+
                   {/* Question Text */}
                   <div className="mb-6">
                       <h3 className="text-xl font-semibold mb-4 leading-relaxed">
@@ -205,17 +277,14 @@ const LearningPage = () => {
                       {/* Options */}
                       <div className="space-y-3">
                           {lesson.questions[currentQuestionIndex].options.map((option) => {
-                              // Styling logic
                               let btnClass = "w-full justify-start text-left py-4 text-base transition-all duration-200 ";
                               const selectedLetter = option.split(/[).]/)[0].trim().toUpperCase();
                               const correctLetter = lesson.questions[currentQuestionIndex].correctAnswer.trim().toUpperCase();
                               
                               if (isAnswerChecked) {
                                   if (selectedLetter === correctLetter) {
-                                      // Show Green for correct
                                       btnClass += "bg-green-100 border-green-500 text-green-900 font-medium"; 
                                   } else if (selectedAnswer === option) {
-                                      // Show Red for wrong selection
                                       btnClass += "bg-red-100 border-red-500 text-red-900";
                                   } else {
                                       btnClass += "opacity-50";
@@ -241,7 +310,7 @@ const LearningPage = () => {
                       </div>
                   </div>
 
-                  {/* FEEDBACK OVERLAY (IXL Style) */}
+                  {/* FEEDBACK OVERLAY */}
                   {isAnswerChecked && (
                       <div className={`mt-auto p-6 rounded-xl mb-4 animate-in slide-in-from-bottom-4 fade-in duration-300 border-l-4 ${isCorrectState ? "bg-green-50 border-green-500" : "bg-red-50 border-red-500"}`}>
                           <div className="flex items-center gap-3 mb-2">
@@ -275,7 +344,6 @@ const LearningPage = () => {
                             Submit
                           </Button>
                       ) : (
-                           // If incorrect, show "Got it" to manually advance. If correct, it auto-advances.
                            !isCorrectState && (
                             <Button 
                                 className="w-full py-6 text-lg" 
@@ -290,7 +358,7 @@ const LearningPage = () => {
                </div>
             )}
 
-            {/* 4. Results Screen */}
+            {/* Results Screen */}
             {quizCompleted && lesson && (
                 <div className="flex flex-col items-center justify-center flex-grow text-center animate-in zoom-in-95">
                     <div className="w-32 h-32 bg-yellow-100 rounded-full flex items-center justify-center mb-6 shadow-inner">
